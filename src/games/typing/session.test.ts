@@ -13,6 +13,7 @@ describe('normalize', () => {
   });
   it('remove caracteres sem Morse e espaços extras', () => {
     expect(normalize('  oi;  tudo  bem?  ')).toBe('OI TUDO BEM?');
+    expect(normalize('Praça')).toBe('PRACA'); // nos jogos, ç continua valendo como C
   });
 });
 
@@ -51,6 +52,17 @@ describe('TypingSession', () => {
     type(s, '.-');
     expect(s.index).toBe(1);
     expect(s.stats.errors).toBe(1);
+  });
+
+  it('backspace apaga o último símbolo da letra atual', () => {
+    const s = new TypingSession(() => 'S');
+    type(s, '..');
+    expect(s.backspace()).toBe(true);
+    expect(s.buffer).toBe('.');
+    s.backspace();
+    expect(s.backspace()).toBe(false);
+    type(s, '...');
+    expect(s.stats.phrases).toBe(1);
   });
 
   it('pula espaços entre palavras', () => {

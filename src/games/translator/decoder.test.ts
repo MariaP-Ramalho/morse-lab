@@ -28,6 +28,12 @@ describe('MorseDecoder', () => {
     expect(d.text).toBe('A');
   });
 
+  it('reconhece Ç', () => {
+    const d = new MorseDecoder();
+    feed(d, '.--. .-. .- -.-.. .- ');
+    expect(d.text).toBe('PRAÇA');
+  });
+
   it('código inválido vira letra desconhecida', () => {
     const d = new MorseDecoder();
     feed(d, '........ ');
@@ -41,12 +47,12 @@ describe('MorseDecoder', () => {
     expect(d.text).toBe('');
   });
 
-  it('backspace apaga símbolo e depois letra', () => {
+  it('backspace apaga a letra em andamento inteira e depois a letra anterior', () => {
     const d = new MorseDecoder();
     feed(d, '.- -.');
     d.backspace();
-    expect(d.buffer).toBe('-');
-    d.backspace();
+    expect(d.buffer).toBe('');
+    expect(d.text).toBe('A');
     d.backspace();
     expect(d.text).toBe('');
   });

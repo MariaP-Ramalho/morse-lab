@@ -2,11 +2,23 @@ import { Beeper } from '../../audio/beeper';
 import { prettyCode } from '../../morse/alphabet';
 import { createInput } from '../../input/createInput';
 import { SpaceHoldInput } from '../../input/spaceHoldInput';
-import { WORD_GAP_FACTOR, type MorseSymbol } from '../../input/types';
-import { appHeader, HoldMeter, ICONS, SignalLamp, SignalTape } from '../../ui/components';
-import { controlPill, legendHtml } from '../../ui/controlPicker';
+import type { MorseSymbol } from '../../input/types';
+import {
+  appHeader,
+  GapMeter,
+  gapSettingHtml,
+  HoldMeter,
+  ICONS,
+  SignalLamp,
+  SignalTape,
+  wireGapSetting,
+} from '../../ui/components';
+import { controlPill, isEraseKey, legendHtml } from '../../ui/controlPicker';
 import type { GameContext } from '../registry';
 import { MorseDecoder } from './decoder';
+
+// Fora da função de montagem: o texto continua lá ao trocar de controle ou voltar do menu.
+const decoder = new MorseDecoder();
 
 export function mountTranslator(ctx: GameContext): () => void {
   const { container, settings } = ctx;
@@ -16,24 +28,14 @@ export function mountTranslator(ctx: GameContext): () => void {
     letterGapMs: settings.letterGapMs,
   });
   const isSpace = settings.control === 'space';
-  const isArrows = settings.control === 'arrows';
-  const decoder = new MorseDecoder();
-  const letterMarkPct = (1 / WORD_GAP_FACTOR) * 100;
+  decoder.buffer = ''; // letra pela metade não sobrevive à troca de tela
 
   container.innerHTML = `
     <div class="screen translator">
       ${appHeader('Tradutor', controlPill(settings.control))}
 
       <div class="toolbar">
-        ${
-          isSpace
-            ? `<label class="gap-setting">
-                 <span>Pausa entre letras</span>
-                 <input type="range" min="250" max="1500" step="50" value="${settings.letterGapMs}" />
-                 <b class="gap-value">${settings.letterGapMs} ms</b>
-               </label>`
-            : ''
-        }
+        ${isSpace ? gapSettingHtml(settings.letterGapMs) : ''}
         <span class="toolbar-spacer"></span>
         <button class="btn ghost small" data-act="copy">${ICONS.copy}<span class="copy-label">copiar</span></button>
         <button class="btn ghost small" data-act="clear">${ICONS.trash}limpar</button>
@@ -55,22 +57,9 @@ export function mountTranslator(ctx: GameContext): () => void {
               <span class="code"></span>
             </div>
           </div>
-          ${
-            isSpace
-              ? `<div class="meter-slot"></div>
-                 <div class="meter gapmeter">
-                   <div class="meter-bar">
-                     <div class="meter-fill"></div>
-                     <div class="meter-mark" style="left:${letterMarkPct}%"></div>
-                   </div>
-                   <div class="meter-labels">
-                     <span style="width:${letterMarkPct}%">letra</span><span>palavra</span>
-                   </div>
-                 </div>`
-              : ''
-          }
+          ${isSpace ? '<div class="meter-slot"></div><div class="gap-slot"></div>' : ''}
           <div class="tape-slot"></div>
-          ${legendHtml(settings.control, true)}
+          ${legendHtml(settings.control, { separator: true, erase: true })}
         </div>
       </div>
     </div>`;
@@ -84,13 +73,7 @@ export function mountTranslator(ctx: GameContext): () => void {
   const lamp = new SignalLamp($('.lamp-slot'));
   const tape = new SignalTape($('.tape-slot'), settings.spaceThresholdMs);
   const meter = isSpace ? new HoldMeter($('.meter-slot'), settings.spaceThresholdMs) : null;
-  const gapMeter = isSpace ? $('.gapmeter') : null;
-  const gapFill = gapMeter?.querySelector<HTMLElement>('.meter-fill');
-
-  let releasedAt: number | null = null;
-  let rafId: number | undefined;
-
-  const wordGapMs = () => settings.letterGapMs * WORD_GAP_FACTOR;
+  const gapMeter = isSpace ? new GapMeter($('.gap-slot'), settings.letterGapMs) : null;
 
   function blurFocus() {
     (document.activeElement as HTMLElement | null)?.blur();
@@ -140,41 +123,18 @@ export function mountTranslator(ctx: GameContext): () => void {
   }
 
   function onPressStart() {
-    releasedAt = null;
     beeper.start();
     lamp.on();
     meter?.begin();
+    gapMeter?.press();
     tape.pressStart();
-    gapMeter?.classList.remove('letter-done', 'word-done');
-    if (gapFill) gapFill.style.width = '0%';
   }
 
   function onPressEnd() {
     beeper.stop();
     lamp.off();
     meter?.end();
-    releasedAt = performance.now();
-    animateGap();
-  }
-
-  // Barra de pausa: mostra quanto falta para fechar a letra e para virar espaço.
-  function animateGap() {
-    if (rafId) cancelAnimationFrame(rafId);
-    const loop = () => {
-      if (releasedAt === null || !gapMeter || !gapFill) return;
-      const gap = performance.now() - releasedAt;
-      gapFill.style.width = `${Math.min(gap / wordGapMs(), 1) * 100}%`;
-      gapMeter.classList.add('active');
-      gapMeter.classList.toggle('letter-done', gap >= settings.letterGapMs);
-      gapMeter.classList.toggle('word-done', gap >= wordGapMs());
-      if (gap >= wordGapMs()) {
-        releasedAt = null;
-        gapMeter.classList.remove('active');
-        return;
-      }
-      rafId = requestAnimationFrame(loop);
-    };
-    loop();
+    gapMeter?.release();
   }
 
   // ---- interface ----
@@ -202,21 +162,16 @@ export function mountTranslator(ctx: GameContext): () => void {
     }
   };
 
-  const range = container.querySelector<HTMLInputElement>('.gap-setting input');
-  const onRange = () => {
-    if (!range) return;
-    const ms = Number(range.value);
+  wireGapSetting(container, (ms) => {
     ctx.updateSettings({ letterGapMs: ms });
     if (input instanceof SpaceHoldInput) input.letterGapMs = ms;
-    container.querySelector('.gap-value')!.textContent = `${ms} ms`;
-  };
-  range?.addEventListener('input', onRange);
-  range?.addEventListener('change', blurFocus);
+    if (gapMeter) gapMeter.letterGapMs = ms;
+  });
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Backspace' || (isArrows && e.key === 'ArrowDown')) {
+    if (isEraseKey(settings.control, e)) {
       e.preventDefault();
-      if (decoder.buffer) tape.removeLast();
+      if (decoder.buffer) tape.removeLetter();
       decoder.backspace();
       render();
     }
@@ -229,7 +184,7 @@ export function mountTranslator(ctx: GameContext): () => void {
   render();
 
   return () => {
-    if (rafId) cancelAnimationFrame(rafId);
+    gapMeter?.stop();
     beeper.stop();
     tape.cancelLive();
     input.detach();

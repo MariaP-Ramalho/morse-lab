@@ -1,5 +1,6 @@
 import type { Settings } from '../settings';
 import { ICONS } from '../ui/components';
+import { mountEscutaGame } from './escuta/escutaGame';
 import { mountTranslator } from './translator/translator';
 import { mountTypingGame } from './typing/typingGame';
 
@@ -31,6 +32,14 @@ export const GAMES: GameDef[] = [
     description: 'Frases aleatórias aparecem e você digita em Morse até o tempo acabar.',
     icon: ICONS.timer,
     mount: mountTypingGame,
+  },
+  {
+    id: 'escuta',
+    kind: 'game',
+    name: 'Escuta',
+    description: 'Ouça uma palavra secreta em Morse e descubra qual é em até 6 tentativas.',
+    icon: ICONS.headphones,
+    mount: mountEscutaGame,
   },
   {
     id: 'translator',

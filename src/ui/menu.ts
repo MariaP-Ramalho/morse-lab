@@ -50,6 +50,7 @@ export function mountMenu(container: HTMLElement, opts: MenuOptions): () => void
           <div class="hero-actions">
             <button class="btn primary" data-game="${GAMES[0].id}">Começar ${ICONS.arrowRight}</button>
             <span class="hint-text"><kbd>enter</kbd> para começar</span>
+            <a class="btn ghost" href="#progresso">${ICONS.chart} meu progresso</a>
           </div>
         </div>
         <div class="hero-visual" aria-hidden="true">

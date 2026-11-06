@@ -1,2 +1,4 @@
 node_modules
 dist
+# banco da antiga versão com contas (pode apagar)
+data

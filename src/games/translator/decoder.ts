@@ -40,9 +40,9 @@ export class MorseDecoder {
     if (last && last.ch !== ' ') this.entries.push({ ch: ' ', code: '/' });
   }
 
-  /** Apaga o último símbolo; se não houver, apaga a última letra. */
+  /** Apaga a letra em andamento inteira (todos os pontos e traços); se não houver, apaga a última letra. */
   backspace() {
-    if (this.buffer) this.buffer = this.buffer.slice(0, -1);
+    if (this.buffer) this.buffer = '';
     else this.entries.pop();
   }
 

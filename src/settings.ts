@@ -11,7 +11,14 @@ export interface Settings {
   duration: number;
   /** Tradutor, modo barra de espaço: pausa que fecha uma letra (ms). */
   letterGapMs: number;
+  /** Velocidade da palavra tocada no jogo Escuta. */
+  escutaSpeed: EscutaSpeed;
 }
+
+export type EscutaSpeed = 'slow' | 'normal' | 'fast';
+
+/** Duração de uma unidade Morse (ms) para cada velocidade. */
+export const SPEED_UNIT_MS: Record<EscutaSpeed, number> = { slow: 160, normal: 110, fast: 75 };
 
 const KEY = 'morse-game-settings-v2';
 
@@ -22,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showHint: false,
   duration: 30,
   letterGapMs: 600,
+  escutaSpeed: 'normal',
 };
 
 export function loadSettings(): Settings {

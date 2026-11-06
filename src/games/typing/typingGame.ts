@@ -1,9 +1,12 @@
+import { saveResult } from '../../progress/history';
 import { Beeper } from '../../audio/beeper';
 import { prettyCode } from '../../morse/alphabet';
 import { createInput } from '../../input/createInput';
 import { CONTROL_LABELS, type MorseSymbol } from '../../input/types';
 import { appHeader, HoldMeter, ICONS, SignalLamp, SignalTape } from '../../ui/components';
-import { controlPill, legendHtml } from '../../ui/controlPicker';
+import { controlPill, isEraseKey, legendHtml } from '../../ui/controlPicker';
+import { focusProgress } from '../../ui/progressScreen';
+import { typingRoundChart } from '../../ui/roundCharts';
 import type { GameContext } from '../registry';
 import { PHRASES_PT } from './phrases.pt';
 import { computeResults, phrasePicker, TypingSession } from './session';
@@ -56,7 +59,7 @@ export function mountTypingGame(ctx: GameContext): () => void {
         <p class="start-hint">Transmita o primeiro sinal para iniciar o tempo.</p>
       </div>
 
-      <div class="legend-row">${legendHtml(settings.control)}</div>
+      <div class="legend-row">${legendHtml(settings.control, { erase: true })}</div>
 
       <div class="card results hidden"></div>
     </div>`;
@@ -78,6 +81,7 @@ export function mountTypingGame(ctx: GameContext): () => void {
   let startedAt: number | null = null;
   let finished = false;
   let timerId: number | undefined;
+  let chartCleanup: () => void = () => undefined;
 
   function blurFocus() {
     (document.activeElement as HTMLElement | null)?.blur();
@@ -91,6 +95,8 @@ export function mountTypingGame(ctx: GameContext): () => void {
   }
 
   function reset() {
+    chartCleanup();
+    chartCleanup = () => undefined;
     clearInterval(timerId);
     stopSignals();
     input.detach();
@@ -236,16 +242,62 @@ export function mountTypingGame(ctx: GameContext): () => void {
         ${item('controle', control.name)}
         ${item('modo', settings.showHint ? 'com dica' : 'sem dica')}
       </dl>
+      <p class="save-note"></p>
+      <div class="round-chart hidden"></div>
       <div class="actions">
         <button class="btn primary" data-act="again">${ICONS.restart} jogar de novo <kbd>enter</kbd></button>
         <button class="btn ghost" data-act="menu">voltar ao menu</button>
       </div>`;
     resultsEl.classList.remove('hidden');
     blurFocus();
+    saveRound(r);
+  }
+
+  /** Salva a rodada no navegador, diz se foi recorde na mesma combinação e mostra o gráfico dela. */
+  function saveRound(r: ReturnType<typeof computeResults>) {
+    const note = $('.save-note');
+    const combo = `${control.name} · ${settings.showHint ? 'com dica' : 'sem dica'} · ${settings.duration}s`;
+    const saved = saveResult({
+      game: 'typing',
+      control: settings.control,
+      hint: settings.showHint,
+      duration: settings.duration,
+      data: { lpm: r.lpm, wpm: r.wpm, accuracy: r.accuracy, letters: r.letters, errors: r.errors, phrases: r.phrases },
+    });
+    if (!saved.stored) {
+      note.textContent = 'Não foi possível salvar esta rodada neste navegador.';
+      note.className = 'save-note error';
+      return;
+    }
+    if (saved.isRecord) {
+      note.className = 'save-note record';
+      note.textContent =
+        saved.previousBest == null
+          ? `Primeiro recorde em ${combo}!`
+          : `Novo recorde em ${combo}! Antes: ${saved.previousBest} LPM.`;
+    } else if (saved.previousBest == null) {
+      note.textContent = 'Rodada salva.'; // 0 LPM na primeira rodada da combinação
+    } else {
+      note.innerHTML = `Seu recorde em ${combo}: <b>${saved.previousBest} LPM</b>`;
+    }
+    note.insertAdjacentHTML('beforeend', ` · <a href="#progresso" data-progress>ver progresso</a>`);
+
+    const chartEl = $('.round-chart');
+    chartEl.classList.remove('hidden');
+    chartCleanup = typingRoundChart(chartEl, {
+      control: settings.control,
+      hint: settings.showHint,
+      duration: settings.duration,
+      name: combo,
+    });
   }
 
   // ---- interface ----
   const onClick = (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-progress]')) {
+      focusProgress({ game: 'typing', control: settings.control, hint: settings.showHint, duration: settings.duration });
+      return; // o link segue para #progresso
+    }
     const target = (e.target as HTMLElement).closest('button');
     if (!target) return;
     if (target.dataset.dur) {
@@ -268,6 +320,12 @@ export function mountTypingGame(ctx: GameContext): () => void {
     if (e.key === 'Escape' || (e.key === 'Enter' && finished)) {
       e.preventDefault();
       reset();
+    } else if (!finished && isEraseKey(settings.control, e)) {
+      e.preventDefault();
+      if (session.backspace()) {
+        tape.removeLast();
+        renderCode();
+      }
     }
   };
 
@@ -276,6 +334,7 @@ export function mountTypingGame(ctx: GameContext): () => void {
   reset();
 
   return () => {
+    chartCleanup();
     clearInterval(timerId);
     stopSignals();
     input.detach();

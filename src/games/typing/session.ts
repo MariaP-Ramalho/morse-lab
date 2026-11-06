@@ -86,6 +86,13 @@ export class TypingSession {
     return { kind: 'letter' };
   }
 
+  /** Apaga o último símbolo da letra atual. Retorna false se não havia o que apagar. */
+  backspace(): boolean {
+    if (!this.buffer) return false;
+    this.buffer = this.buffer.slice(0, -1);
+    return true;
+  }
+
   private loadPhrase() {
     let p = '';
     // Evita frase vazia caso alguma só tenha caracteres sem Morse.

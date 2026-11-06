@@ -3,6 +3,8 @@ export class Beeper {
   private ctx?: AudioContext;
   private osc?: OscillatorNode;
   private gain?: GainNode;
+  /** Tons agendados por playMorse (para poder interromper). */
+  private scheduled: OscillatorNode[] = [];
 
   constructor(public enabled = true, private freq = 600) {}
 
@@ -45,16 +47,12 @@ export class Beeper {
     this.gain = undefined;
   }
 
-  /** Bipe curto (ponto) ou longo (traço). */
-  beep(kind: 'dot' | 'dash') {
-    const ctx = this.ensure();
-    if (!ctx) return;
-    const dur = kind === 'dot' ? 0.07 : 0.21;
-    const t = ctx.currentTime;
+  /** Tom com envelope curto para não estalar. */
+  private tone(ctx: AudioContext, t: number, dur: number): OscillatorNode {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.15, t + 0.005);
-    gain.gain.setValueAtTime(0.15, t + dur - 0.01);
+    gain.gain.setValueAtTime(0.15, t + dur - 0.008);
     gain.gain.linearRampToValueAtTime(0, t + dur);
     gain.connect(ctx.destination);
     const osc = ctx.createOscillator();
@@ -62,6 +60,48 @@ export class Beeper {
     osc.connect(gain);
     osc.start(t);
     osc.stop(t + dur + 0.02);
+    return osc;
+  }
+
+  /** Bipe curto (ponto) ou longo (traço). */
+  beep(kind: 'dot' | 'dash') {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    this.tone(ctx, ctx.currentTime, kind === 'dot' ? 0.07 : 0.21);
+  }
+
+  /**
+   * Toca letras em Morse (ex.: ['...', '---', '...']) no ritmo padrão:
+   * ponto = 1 unidade, traço = 3, entre sinais = 1, entre letras = 3.
+   * Retorna a duração total em ms.
+   */
+  playMorse(codes: string[], unitMs: number): number {
+    const ctx = this.ensure();
+    if (!ctx) return 0;
+    this.stopMorse();
+    const u = unitMs / 1000;
+    const start = ctx.currentTime + 0.08;
+    let t = start;
+    codes.forEach((code, i) => {
+      for (const s of code) {
+        const d = s === '.' ? u : 3 * u;
+        this.scheduled.push(this.tone(ctx, t, d));
+        t += d + u;
+      }
+      if (i < codes.length - 1) t += 2 * u;
+    });
+    return (t - ctx.currentTime) * 1000;
+  }
+
+  stopMorse() {
+    for (const o of this.scheduled) {
+      try {
+        o.stop();
+      } catch {
+        /* já parou */
+      }
+    }
+    this.scheduled = [];
   }
 
   /** Som curto de erro. */

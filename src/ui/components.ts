@@ -1,4 +1,4 @@
-import type { ControlMode, MorseSymbol } from '../input/types';
+import { WORD_GAP_FACTOR, type ControlMode, type MorseSymbol } from '../input/types';
 
 /* ---------------- ícones (SVG inline) ---------------- */
 
@@ -16,7 +16,13 @@ export const ICONS = {
   sound: svg('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>'),
   arrowRight: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   restart: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
+  headphones: svg('<path d="M3 15v-3a9 9 0 0 1 18 0v3"/><rect x="3" y="14" width="4.5" height="7" rx="1.5"/><rect x="16.5" y="14" width="4.5" height="7" rx="1.5"/>'),
+  play: svg('<path d="M8 5.5v13l11-6.5z" fill="currentColor"/>'),
+  stop: svg('<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/>'),
+  swap: svg('<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  user: svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+  chart: svg('<path d="M4 4v16h16"/><path d="m8 15 3-4 3 2 4-6"/>'),
 };
 
 export const CONTROL_ICONS: Record<ControlMode, string> = {
@@ -27,7 +33,15 @@ export const CONTROL_ICONS: Record<ControlMode, string> = {
 
 /* ---------------- cabeçalho ---------------- */
 
-/** Barra superior com a marca (clicar volta ao menu) e o nome da tela atual. */
+export function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+/** Atalho para o progresso no canto do cabeçalho. */
+const progressChip = () =>
+  `<a class="pill pill-btn progress-chip" href="#progresso" title="Ver meu progresso">${ICONS.chart}progresso</a>`;
+
+/** Barra superior com a marca (clicar volta ao menu), o nome da tela atual e o atalho do progresso. */
 export function appHeader(crumb?: string, right = ''): string {
   return `
     <header class="appbar">
@@ -36,7 +50,7 @@ export function appHeader(crumb?: string, right = ''): string {
         <span class="brand-name">Morse<b>Lab</b></span>
       </button>
       ${crumb ? `<span class="crumb-sep">/</span><span class="crumb">${crumb}</span>` : ''}
-      <div class="appbar-right">${right}</div>
+      <div class="appbar-right">${right}${progressChip()}</div>
     </header>`;
 }
 
@@ -146,6 +160,16 @@ export class SignalTape {
     this.gap();
   }
 
+  /** Remove os sinais da letra em andamento, desde o último espaço (o sinal ao vivo fica). */
+  removeLetter() {
+    let el = this.track.lastElementChild;
+    while (el && !el.classList.contains('gap')) {
+      const prev = el.previousElementSibling;
+      if (el !== this.live) el.remove();
+      el = prev;
+    }
+  }
+
   /** Remove o último sinal (usado ao apagar). */
   removeLast() {
     const last = this.track.lastElementChild;
@@ -208,4 +232,80 @@ export class HoldMeter {
     this.el.classList.remove('active', 'dash');
     this.fill.style.width = '0%';
   }
+}
+
+/* ---------------- barra de pausa (modo espaço com separadores) ---------------- */
+
+/**
+ * Depois de soltar o espaço, mostra quanto falta para fechar a letra
+ * e para a pausa longa (nova palavra / enviar).
+ */
+export class GapMeter {
+  private releasedAt: number | null = null;
+  private raf?: number;
+  private fill: HTMLElement;
+
+  constructor(private el: HTMLElement, public letterGapMs: number, longLabel = 'palavra') {
+    const pct = (1 / WORD_GAP_FACTOR) * 100;
+    el.classList.add('meter', 'gapmeter');
+    el.innerHTML = `
+      <div class="meter-bar"><div class="meter-fill"></div><div class="meter-mark" style="left:${pct}%"></div></div>
+      <div class="meter-labels"><span style="width:${pct}%">letra</span><span>${longLabel}</span></div>`;
+    this.fill = el.querySelector('.meter-fill')!;
+  }
+
+  press() {
+    this.releasedAt = null;
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.el.classList.remove('active', 'letter-done', 'word-done');
+    this.fill.style.width = '0%';
+  }
+
+  release() {
+    this.releasedAt = performance.now();
+    const wordGap = () => this.letterGapMs * WORD_GAP_FACTOR;
+    const loop = () => {
+      if (this.releasedAt === null) return;
+      const gap = performance.now() - this.releasedAt;
+      this.fill.style.width = `${Math.min(gap / wordGap(), 1) * 100}%`;
+      this.el.classList.add('active');
+      this.el.classList.toggle('letter-done', gap >= this.letterGapMs);
+      this.el.classList.toggle('word-done', gap >= wordGap());
+      if (gap >= wordGap()) {
+        this.releasedAt = null;
+        this.el.classList.remove('active');
+        return;
+      }
+      this.raf = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  stop() {
+    this.releasedAt = null;
+    if (this.raf) cancelAnimationFrame(this.raf);
+  }
+}
+
+/* ---------------- ajuste da pausa entre letras ---------------- */
+
+export function gapSettingHtml(ms: number): string {
+  return `
+    <label class="gap-setting">
+      <span>Pausa entre letras</span>
+      <input type="range" min="250" max="1500" step="50" value="${ms}" />
+      <b class="gap-value">${ms} ms</b>
+    </label>`;
+}
+
+/** Liga o controle deslizante criado por gapSettingHtml. */
+export function wireGapSetting(root: HTMLElement, onChange: (ms: number) => void) {
+  const range = root.querySelector<HTMLInputElement>('.gap-setting input');
+  if (!range) return;
+  range.addEventListener('input', () => {
+    const ms = Number(range.value);
+    root.querySelector('.gap-value')!.textContent = `${ms} ms`;
+    onChange(ms);
+  });
+  range.addEventListener('change', () => range.blur());
 }
