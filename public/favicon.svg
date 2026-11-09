@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Marca do Morse Lab: ponto · traço · ponto -->
+  <rect width="32" height="32" rx="8" fill="#111a2d"/>
+  <g fill="#ffb547">
+    <circle cx="5" cy="16" r="2.75"/>
+    <rect x="10.5" y="13.25" width="11" height="5.5" rx="2.75"/>
+    <circle cx="27" cy="16" r="2.75"/>
+  </g>
+</svg>
