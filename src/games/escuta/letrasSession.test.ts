@@ -32,9 +32,20 @@ describe('letterPicker', () => {
     // Math.random falso: primeiro sorteia A de novo, depois B.
     const values = [0, 0, 1 / 26];
     let i = 0;
-    const pick = letterPicker(() => values[i++]);
+    const pick = letterPicker(undefined, () => values[i++]);
     const first = pick();
     expect(first).toBe('A');
     expect(pick(first)).toBe('B');
+  });
+
+  it('só sorteia letras do conjunto escolhido', () => {
+    const pick = letterPicker('EIS');
+    let prev: string | undefined;
+    for (let i = 0; i < 200; i++) {
+      const c = pick(prev);
+      expect('EIS').toContain(c);
+      expect(c).not.toBe(prev);
+      prev = c;
+    }
   });
 });

@@ -142,6 +142,8 @@ export interface LetrasFilter {
   speed: Speed | 'all';
   duration: number | 'all';
   hint: 'all' | 'on' | 'off';
+  /** Alfabeto todo (`full`), só rodadas com letras escolhidas (`custom`) ou tudo. */
+  letters?: 'all' | 'full' | 'custom';
 }
 
 export function filterLetras(rs: LetrasResult[], f: LetrasFilter): LetrasResult[] {
@@ -149,7 +151,8 @@ export function filterLetras(rs: LetrasResult[], f: LetrasFilter): LetrasResult[
     (r) =>
       (f.speed === 'all' || r.speed === f.speed) &&
       (f.duration === 'all' || r.duration === f.duration) &&
-      (f.hint === 'all' || r.hint === (f.hint === 'on')),
+      (f.hint === 'all' || r.hint === (f.hint === 'on')) &&
+      (!f.letters || f.letters === 'all' || (f.letters === 'custom') === !!r.letters),
   );
 }
 

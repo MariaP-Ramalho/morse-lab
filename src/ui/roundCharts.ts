@@ -9,7 +9,7 @@ import {
   runningBest,
   typingOnly,
 } from '../progress/stats';
-import type { Control, Speed } from '../shared/results';
+import { sameLetters, type Control, type Speed } from '../shared/results';
 import { columnChart, lineChart } from './charts';
 
 /**
@@ -80,14 +80,14 @@ export function escutaRoundChart(
 
 export function letrasRoundChart(
   slot: HTMLElement,
-  combo: { speed: Speed; duration: number; hint: boolean; name: string },
+  combo: { speed: Speed; duration: number; hint: boolean; letters?: string; name: string },
 ): () => void {
   const chartEl = head(slot, `Sua evolução em ${combo.name}`, 'Letras certas em cada rodada nessa configuração. O último ponto é esta rodada.');
   const list = filterLetras(letrasOnly(loadResults('letras')), {
     speed: combo.speed,
     duration: combo.duration,
     hint: combo.hint ? 'on' : 'off',
-  });
+  }).filter((r) => sameLetters(r, combo));
   if (list.length < 2) {
     chartEl.innerHTML = '<p class="chart-empty">Primeira rodada nessa configuração. Jogue de novo para ver sua evolução.</p>';
     return noop;

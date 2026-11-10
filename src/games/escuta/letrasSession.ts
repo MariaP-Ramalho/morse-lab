@@ -3,7 +3,9 @@
  * e a pessoa responde digitando a letra normal. Sem DOM nem som, para ser testável.
  */
 
-export const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+import { ALPHABET } from '../../settings';
+
+export const LETTERS = ALPHABET;
 
 export interface LetrasAnswer {
   /** Letra que tocou. */
@@ -13,11 +15,14 @@ export interface LetrasAnswer {
   ok: boolean;
 }
 
-/** Sorteia letras sem repetir a anterior (repetir confunde: parece que o som não mudou). */
-export function letterPicker(random = Math.random): (prev?: string) => string {
+/**
+ * Sorteia letras do conjunto sem repetir a anterior (repetir confunde: parece que o som não mudou).
+ * O conjunto precisa ter pelo menos 2 letras.
+ */
+export function letterPicker(letters = LETTERS, random = Math.random): (prev?: string) => string {
   return (prev) => {
     let c: string;
-    do c = LETTERS[Math.floor(random() * LETTERS.length)];
+    do c = letters[Math.floor(random() * letters.length)];
     while (c === prev);
     return c;
   };

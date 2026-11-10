@@ -38,6 +38,10 @@ export function mountEscutaGame(ctx: GameContext): () => void {
       <div class="toolbar">
         ${escutaModeSeg('palavra')}
         ${speedControlHtml(settings.escutaWpm)}
+        <div class="seg" aria-label="Dica">
+          <button data-hint="off">sem dica</button>
+          <button data-hint="on">com dica</button>
+        </div>
         <span class="toolbar-spacer"></span>
         <button class="btn ghost small" data-act="new">${ICONS.restart} nova palavra</button>
       </div>
@@ -231,7 +235,7 @@ export function mountEscutaGame(ctx: GameContext): () => void {
   // ---- renderização ----
   function tile(letter: string, state: string, extra = '', delay?: number) {
     const style = delay !== undefined ? ` style="animation-delay:${delay}ms"` : '';
-    const code = letter && MORSE[letter] ? prettyCode(MORSE[letter]) : '';
+    const code = settings.letrasHint && letter && MORSE[letter] ? prettyCode(MORSE[letter]) : '';
     return `<div class="tile ${state} ${extra}"${style}><span class="tile-letter">${letter}</span><span class="tile-code">${code}</span></div>`;
   }
 
@@ -266,11 +270,18 @@ export function mountEscutaGame(ctx: GameContext): () => void {
   function renderLetters() {
     lettersEl.innerHTML = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
       .split('')
-      .map(
-        (c) =>
-          `<button class="key ${session.letterStates[c] ?? ''}" data-letter="${c}"><b>${c}</b><span>${prettyCode(MORSE[c])}</span></button>`,
-      )
+      .map((c) => {
+        const code = settings.letrasHint ? `<span>${prettyCode(MORSE[c])}</span>` : '';
+        return `<button class="key ${session.letterStates[c] ?? ''}" data-letter="${c}"><b>${c}</b>${code}</button>`;
+      })
       .join('');
+    lettersEl.classList.toggle('no-hint', !settings.letrasHint);
+  }
+
+  function renderHintSeg() {
+    container.querySelectorAll<HTMLElement>('[data-hint]').forEach((b) => {
+      b.classList.toggle('active', (b.dataset.hint === 'on') === settings.letrasHint);
+    });
   }
 
   // ---- digitação ----
@@ -316,6 +327,11 @@ export function mountEscutaGame(ctx: GameContext): () => void {
     else if (btn.dataset.act === 'enter') submit();
     else if (btn.dataset.act === 'play') togglePlay();
     else if (btn.dataset.act === 'new') newGame();
+    else if (btn.dataset.hint) {
+      ctx.updateSettings({ letrasHint: btn.dataset.hint === 'on' });
+      renderHintSeg();
+      render();
+    }
     blurFocus();
   };
 
@@ -349,6 +365,7 @@ export function mountEscutaGame(ctx: GameContext): () => void {
 
   container.addEventListener('click', onClick);
   window.addEventListener('keydown', onKey);
+  renderHintSeg();
   newGame();
 
   return () => {

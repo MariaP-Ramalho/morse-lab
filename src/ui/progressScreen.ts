@@ -53,15 +53,18 @@ function fmtDuration(totalS: number): string {
 const comboName = (r: TypingResult) =>
   `${CONTROL_LABELS[r.control].name} · ${r.hint ? 'com dica' : 'sem dica'} · ${r.duration}s`;
 
+/** Letras de uma rodada: "todas" ou as escolhidas (ex.: "E I S H"). */
+const letrasSet = (r: LetrasResult) => (r.letters ? r.letters.split('').join(' ') : 'todas');
+
 const letrasCombo = (r: LetrasResult) =>
-  `${SPEED_NAMES[r.speed]} · ${r.hint ? 'com dica' : 'sem dica'} · ${r.duration}s`;
+  `${SPEED_NAMES[r.speed]} · ${r.hint ? 'com dica' : 'sem dica'} · ${r.duration}s${r.letters ? ` · ${letrasSet(r)}` : ''}`;
 
 /** Filtros guardados durante a sessão do navegador (voltar à tela mantém a escolha). */
 const state: { game: Game; typing: TypingFilter; speed: Speed | 'all'; letras: LetrasFilter } = {
   game: 'typing',
   typing: { control: 'all', hint: 'all', duration: 'all' },
   speed: 'all',
-  letras: { speed: 'all', duration: 'all', hint: 'all' },
+  letras: { speed: 'all', duration: 'all', hint: 'all', letters: 'all' },
 };
 
 /** Abre o Progresso já filtrado na configuração de uma partida (usado pelo "ver progresso" dos jogos). */
@@ -69,12 +72,13 @@ export function focusProgress(
   f:
     | { game: 'typing'; control: Control; hint: boolean; duration: number }
     | { game: 'escuta'; speed: Speed }
-    | { game: 'letras'; speed: Speed; duration: number; hint: boolean },
+    | { game: 'letras'; speed: Speed; duration: number; hint: boolean; custom: boolean },
 ): void {
   state.game = f.game;
   if (f.game === 'typing') state.typing = { control: f.control, hint: f.hint ? 'on' : 'off', duration: f.duration };
   else if (f.game === 'escuta') state.speed = f.speed;
-  else state.letras = { speed: f.speed, duration: f.duration, hint: f.hint ? 'on' : 'off' };
+  else
+    state.letras = { speed: f.speed, duration: f.duration, hint: f.hint ? 'on' : 'off', letters: f.custom ? 'custom' : 'full' };
 }
 
 export function mountProgressScreen(container: HTMLElement): () => void {
@@ -105,7 +109,8 @@ export function mountProgressScreen(container: HTMLElement): () => void {
       return `${games}
         ${seg('velocidade', [['all', 'todas'], ...ESCUTA_SPEEDS.map((x) => [x, SPEED_NAMES[x]] as [string, string])], l.speed, 'l-velocidade')}
         ${seg('dica', [['all', 'todas'], ['off', 'sem dica'], ['on', 'com dica']], l.hint, 'l-dica')}
-        ${seg('tempo', [['all', 'todos'], ...LETRAS_DURATIONS.map((d) => [String(d), `${d}s`] as [string, string])], String(l.duration), 'l-tempo')}`;
+        ${seg('tempo', [['all', 'todos'], ...LETRAS_DURATIONS.map((d) => [String(d), `${d}s`] as [string, string])], String(l.duration), 'l-tempo')}
+        ${seg('letras', [['all', 'todas as rodadas'], ['full', 'alfabeto todo'], ['custom', 'letras escolhidas']], l.letters ?? 'all', 'l-letras')}`;
     }
     if (state.game === 'escuta') {
       return `${games}${seg('velocidade', [['all', 'todas'], ...ESCUTA_SPEEDS.map((s) => [s, SPEED_NAMES[s]] as [string, string])], state.speed)}`;
@@ -392,13 +397,14 @@ export function mountProgressScreen(container: HTMLElement): () => void {
     if (!list.length) return '<p class="chart-empty">Nenhuma rodada com esses filtros.</p>';
     return `
       <table class="history">
-        <thead><tr><th>quando</th><th>velocidade</th><th>dica</th><th>tempo</th><th class="num">acertos</th><th class="num">erros</th><th class="num">precisão</th></tr></thead>
+        <thead><tr><th>quando</th><th>velocidade</th><th>dica</th><th>tempo</th><th>letras</th><th class="num">acertos</th><th class="num">erros</th><th class="num">precisão</th></tr></thead>
         <tbody>${list.slice(-15).reverse().map((r) => `
           <tr>
             <td>${fmtDate(r.createdAt)}</td>
             <td>${speedLabel(r)}</td>
             <td>${r.hint ? HINT_NAMES.on : HINT_NAMES.off}</td>
             <td>${r.duration}s</td>
+            <td>${letrasSet(r)}</td>
             <td class="num"><b>${r.data.correct}</b></td>
             <td class="num">${r.data.errors}</td>
             <td class="num">${r.data.accuracy}%</td>
@@ -421,6 +427,7 @@ export function mountProgressScreen(container: HTMLElement): () => void {
     else if (f === 'l-velocidade') state.letras.speed = v as Speed | 'all';
     else if (f === 'l-dica') state.letras.hint = v as LetrasFilter['hint'];
     else if (f === 'l-tempo') state.letras.duration = v === 'all' ? 'all' : Number(v);
+    else if (f === 'l-letras') state.letras.letters = v as LetrasFilter['letters'];
     render();
   };
   container.addEventListener('click', onClick);

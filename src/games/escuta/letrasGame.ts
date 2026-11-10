@@ -1,15 +1,16 @@
 import { Beeper } from '../../audio/beeper';
 import { MORSE, prettyCode } from '../../morse/alphabet';
 import { normalize } from '../../morse/normalize';
-import { saveResult } from '../../progress/history';
+import { loadResults, saveResult } from '../../progress/history';
+import { letrasOnly, missedRanking } from '../../progress/stats';
 import { LETRAS_DURATIONS, SPEED_NAMES, speedBand } from '../../shared/results';
-import { unitMs } from '../../settings';
+import { cleanLetterSet, unitMs } from '../../settings';
 import { appHeader, ICONS } from '../../ui/components';
 import { focusProgress } from '../../ui/progressScreen';
 import { letrasRoundChart } from '../../ui/roundCharts';
 import type { GameContext } from '../registry';
 import { escutaModeSeg, onModeClick, speedControlHtml, wireSpeedControl } from './mode';
-import { LETTERS, LetrasSession, type LetrasAnswer } from './letrasSession';
+import { letterPicker, LETTERS, LetrasSession, type LetrasAnswer } from './letrasSession';
 
 /** Pausa depois de responder, antes de tocar a próxima letra (ms). */
 const PAUSE_OK = 350;
@@ -18,6 +19,15 @@ const PAUSE_WRONG = 1100; // mais tempo para ver qual era a letra certa
 const STRIP_SIZE = 16;
 
 type Phase = 'idle' | 'listening' | 'feedback' | 'done';
+
+/** Atalhos do seletor de letras. */
+const VOWELS = 'AEIOU';
+/** Quantas letras o atalho "mais erradas" escolhe. */
+const MISSED_PRESET = 6;
+
+/** Nome curto do conjunto: "todas", as próprias letras (até 6) ou a quantidade. */
+const setName = (set: string) =>
+  set.length === LETTERS.length ? 'todas' : set.length <= 6 ? set.split('').join(' ') : `${set.length} letras`;
 
 export function mountLetrasGame(ctx: GameContext): () => void {
   const { container, settings } = ctx;
@@ -38,8 +48,29 @@ export function mountLetrasGame(ctx: GameContext): () => void {
           <button data-hint="off">sem dica</button>
           <button data-hint="on">com dica</button>
         </div>
+        <button class="btn ghost small set-btn" data-act="pick">letras: <b class="set-name"></b></button>
         <span class="toolbar-spacer"></span>
         <button class="btn ghost small" data-act="again">${ICONS.restart} reiniciar <kbd>esc</kbd></button>
+      </div>
+
+      <div class="card picker hidden" role="group" aria-label="Escolher letras">
+        <div class="picker-head">
+          <div>
+            <div class="card-label">Letras da rodada</div>
+            <p class="picker-note">Toque ou digite as letras para incluir ou tirar. <span class="picker-count"></span></p>
+          </div>
+          <div class="picker-presets">
+            <button class="btn ghost small" data-preset="all">todas</button>
+            <button class="btn ghost small" data-preset="none">nenhuma</button>
+            <button class="btn ghost small" data-preset="vowels">vogais</button>
+            <button class="btn ghost small" data-preset="missed">mais erradas</button>
+          </div>
+        </div>
+        <div class="letters picker-keys"></div>
+        <div class="picker-actions">
+          <button class="btn ghost small" data-act="pick-cancel">cancelar <kbd>esc</kbd></button>
+          <button class="btn primary small" data-act="pick-apply">usar estas letras <kbd>enter</kbd></button>
+        </div>
       </div>
 
       <div class="card stage letras-stage">
@@ -74,6 +105,8 @@ export function mountLetrasGame(ctx: GameContext): () => void {
   const stripEl = $('.strip');
   const lettersEl = $('.letters');
   const resultsEl = $('.results');
+  const pickerEl = $('.picker');
+  const pickerKeys = $('.picker-keys');
 
   let session: LetrasSession;
   let phase: Phase = 'idle';
@@ -83,6 +116,8 @@ export function mountLetrasGame(ctx: GameContext): () => void {
   let playTimer: number | undefined;
   let chartCleanup: () => void = () => undefined;
   let last: LetrasAnswer | null = null;
+  /** Letras marcadas no seletor enquanto ele está aberto (null = fechado). */
+  let draft: Set<string> | null = null;
 
   const duration = () => settings.letrasDuration;
   const band = () => speedBand(settings.escutaWpm);
@@ -113,7 +148,7 @@ export function mountLetrasGame(ctx: GameContext): () => void {
     clearInterval(timerId);
     clearTimeout(nextTimer);
     stopPlayback();
-    session = new LetrasSession();
+    session = new LetrasSession(letterPicker(settings.letrasSet));
     phase = 'idle';
     last = null;
     screenEl.classList.remove('running', 'done');
@@ -126,11 +161,14 @@ export function mountLetrasGame(ctx: GameContext): () => void {
     container.querySelectorAll<HTMLElement>('[data-hint]').forEach((b) => {
       b.classList.toggle('active', (b.dataset.hint === 'on') === settings.letrasHint);
     });
+    $('.set-name').textContent = setName(settings.letrasSet);
     renderAll();
+    renderPicker();
     blurFocus();
   }
 
   function start() {
+    if (draft) return;
     phase = 'listening';
     startedAt = performance.now();
     screenEl.classList.add('running');
@@ -227,6 +265,7 @@ export function mountLetrasGame(ctx: GameContext): () => void {
         let cls = '';
         if (last?.letter === c) cls = 'correct';
         else if (last && !last.ok && last.typed === c) cls = 'wrong';
+        if (!settings.letrasSet.includes(c)) cls += ' off';
         const code = settings.letrasHint ? `<span>${prettyCode(MORSE[c])}</span>` : '';
         return `<button class="key ${cls}" data-letter="${c}"><b>${c}</b>${code}</button>`;
       })
@@ -234,11 +273,73 @@ export function mountLetrasGame(ctx: GameContext): () => void {
     lettersEl.classList.toggle('no-hint', !settings.letrasHint);
   }
 
+  // ---- seletor de letras ----
+  /** Letras que a pessoa mais errou em todas as rodadas salvas. */
+  const mostMissed = () =>
+    missedRanking(letrasOnly(loadResults('letras')))
+      .slice(0, MISSED_PRESET)
+      .map((m) => m.letter);
+
+  function openPicker() {
+    reset(); // trocar as letras reinicia a rodada, como as outras opções
+    draft = new Set(settings.letrasSet);
+    screenEl.classList.add('picking');
+    pickerEl.classList.remove('hidden');
+    const missedBtn = $<HTMLButtonElement>('[data-preset="missed"]');
+    missedBtn.disabled = mostMissed().length < 2;
+    missedBtn.title = missedBtn.disabled ? 'Jogue algumas rodadas para saber quais letras você mais erra.' : '';
+    renderPicker();
+  }
+
+  function closePicker(apply: boolean) {
+    if (!draft) return;
+    if (apply) {
+      if (draft.size < 2) return;
+      ctx.updateSettings({ letrasSet: cleanLetterSet([...draft].join('')) });
+    }
+    draft = null;
+    screenEl.classList.remove('picking');
+    pickerEl.classList.add('hidden');
+    reset();
+  }
+
+  function togglePick(c: string) {
+    if (!draft) return;
+    if (draft.has(c)) draft.delete(c);
+    else draft.add(c);
+    renderPicker();
+  }
+
+  function preset(name: string) {
+    if (!draft) return;
+    const letters = name === 'all' ? LETTERS : name === 'vowels' ? VOWELS : name === 'missed' ? mostMissed().join('') : '';
+    draft = new Set(letters);
+    renderPicker();
+  }
+
+  function renderPicker() {
+    if (!draft) return;
+    const chosen = draft;
+    pickerKeys.innerHTML = LETTERS.split('')
+      .map((c) => {
+        const on = chosen.has(c);
+        const code = settings.letrasHint ? `<span>${prettyCode(MORSE[c])}</span>` : '';
+        return `<button class="key ${on ? 'on' : 'off'}" data-toggle="${c}" aria-pressed="${on}"><b>${c}</b>${code}</button>`;
+      })
+      .join('');
+    pickerKeys.classList.toggle('no-hint', !settings.letrasHint);
+    const count = $('.picker-count');
+    count.textContent = chosen.size < 2 ? 'Escolha pelo menos 2.' : `${chosen.size} de ${LETTERS.length}.`;
+    count.classList.toggle('warn', chosen.size < 2);
+    $<HTMLButtonElement>('[data-act="pick-apply"]').disabled = chosen.size < 2;
+  }
+
   function showResults() {
     const lpm = Math.round((session.correct / duration()) * 60);
     const speedName = SPEED_NAMES[band()];
     const hintName = settings.letrasHint ? 'com dica' : 'sem dica';
-    const combo = `${speedName} · ${hintName} · ${duration()}s`;
+    const custom = settings.letrasSet.length < LETTERS.length;
+    const combo = `${speedName} · ${hintName} · ${duration()}s${custom ? ` · ${setName(settings.letrasSet)}` : ''}`;
     const missed = new Map<string, number>();
     for (const c of session.missed) missed.set(c, (missed.get(c) ?? 0) + 1);
     const item = (label: string, value: string | number) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
@@ -263,6 +364,7 @@ export function mountLetrasGame(ctx: GameContext): () => void {
         ${item('tempo', `${duration()}s`)}
         ${item('velocidade', `${speedName} · ${settings.escutaWpm} ppm`)}
         ${item('modo', hintName)}
+        ${item('letras', setName(settings.letrasSet))}
       </dl>
       ${
         missed.size
@@ -295,6 +397,7 @@ export function mountLetrasGame(ctx: GameContext): () => void {
       wpm: settings.escutaWpm,
       duration: duration(),
       hint: settings.letrasHint,
+      ...(settings.letrasSet.length < LETTERS.length ? { letters: settings.letrasSet } : {}),
       data: { correct: session.correct, errors: session.errors, accuracy: session.accuracy, missed: session.missed },
     });
     if (!saved.stored) {
@@ -321,6 +424,7 @@ export function mountLetrasGame(ctx: GameContext): () => void {
       speed: band(),
       duration: duration(),
       hint: settings.letrasHint,
+      letters: settings.letrasSet.length < LETTERS.length ? settings.letrasSet : undefined,
       name: combo,
     });
   }
@@ -329,19 +433,33 @@ export function mountLetrasGame(ctx: GameContext): () => void {
   const onClick = (e: MouseEvent) => {
     const el = e.target as HTMLElement;
     if (el.closest('[data-progress]')) {
-      focusProgress({ game: 'letras', speed: band(), duration: duration(), hint: settings.letrasHint });
+      focusProgress({
+        game: 'letras',
+        speed: band(),
+        duration: duration(),
+        hint: settings.letrasHint,
+        custom: settings.letrasSet.length < LETTERS.length,
+      });
       return; // o link segue para #progresso
     }
     if (onModeClick(el)) return;
     const btn = el.closest<HTMLElement>('button');
     if (!btn) return;
-    const { act, dur, hint, letter } = btn.dataset;
+    const { act, dur, hint, letter, toggle } = btn.dataset;
     if (act === 'menu') {
       ctx.exit();
       return;
     }
+    if (toggle) togglePick(toggle);
+    else if (btn.dataset.preset) preset(btn.dataset.preset);
+    else if (act === 'pick') {
+      if (draft) closePicker(false);
+      else openPicker();
+    }
+    else if (act === 'pick-cancel') closePicker(false);
+    else if (act === 'pick-apply') closePicker(true);
     // Trocar a configuração reinicia, para o resultado valer para uma combinação só.
-    if (dur) {
+    else if (dur) {
       ctx.updateSettings({ letrasDuration: Number(dur) });
       reset();
     } else if (hint) {
@@ -360,6 +478,20 @@ export function mountLetrasGame(ctx: GameContext): () => void {
 
   const onKey = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (draft) {
+      // Seletor aberto: as letras marcam e desmarcam.
+      if (e.key === 'Escape' || e.key === 'Enter') {
+        e.preventDefault();
+        closePicker(e.key === 'Enter');
+      } else if (e.key.length === 1) {
+        const letter = normalize(e.key);
+        if (/^[A-Z]$/.test(letter)) {
+          e.preventDefault();
+          togglePick(letter);
+        }
+      }
+      return;
+    }
     if (e.key === 'Escape' || (e.key === 'Enter' && phase === 'done')) {
       e.preventDefault();
       reset();

@@ -1182,8 +1182,26 @@ a.btn.primary { color: #1d1405; }
 .chip.wrong { color: var(--err); background: var(--err-soft); box-shadow: inset 0 0 0 1px var(--err); }
 
 .letras .letters { grid-template-columns: repeat(13, minmax(0, 1fr)); }
-.letras .letters.no-hint .key { padding: 10px 2px; }
+.letters.no-hint .key { padding: 10px 2px; }
 .key.wrong { background: var(--err); border-color: var(--err); color: #2a0509; }
+/* letra fora do conjunto escolhido */
+.key.off { opacity: 0.35; }
+.key.off.wrong { opacity: 1; }
+
+/* seletor de letras */
+.set-btn b { font-family: var(--font-mono); color: var(--accent); letter-spacing: 0.04em; }
+.letras.picking .stage { display: none; }
+.picker-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 20px; margin-bottom: 16px; }
+.picker-head .card-label { margin-bottom: 6px; }
+.picker-note { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.picker-count.warn { color: var(--err); }
+.picker-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.picker-presets .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.picker-keys .key.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.picker-keys .key.on span { color: var(--accent); }
+.picker-keys .key.off { opacity: 0.45; }
+.picker-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.picker-actions .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* letras para treinar (resultado e progresso) */
 .missed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 20px; }

@@ -74,7 +74,7 @@ export interface EscutaInput {
   data: EscutaData;
 }
 
-/** Escuta, modo letra a letra: depende da velocidade, da duração e da dica. */
+/** Escuta, modo letra a letra: depende da velocidade, da duração, da dica e das letras escolhidas. */
 export interface LetrasInput {
   game: 'letras';
   speed: Speed;
@@ -82,8 +82,13 @@ export interface LetrasInput {
   wpm?: number;
   duration: number;
   hint: boolean;
+  /** Letras sorteadas, em ordem alfabética, quando a pessoa escolheu só algumas (ausente = alfabeto todo). */
+  letters?: string;
   data: LetrasData;
 }
+
+/** Mesmo conjunto de letras (rodadas com letras diferentes não se comparam). */
+export const sameLetters = (a: { letters?: string }, b: { letters?: string }) => (a.letters ?? '') === (b.letters ?? '');
 
 export type ResultInput = TypingInput | EscutaInput | LetrasInput;
 
@@ -98,7 +103,7 @@ export interface SaveResponse {
   result: StoredResult;
   /**
    * Melhor marca anterior na mesma combinação: LPM na Digitação (controle + dica + duração),
-   * acertos no letra a letra (velocidade + duração + dica).
+   * acertos no letra a letra (velocidade + duração + dica + letras).
    */
   previousBest?: number | null;
   isRecord?: boolean;
@@ -162,12 +167,18 @@ export function parseResultInput(body: unknown): ResultInput | null {
     const accuracy = num(d.accuracy, 0, 100);
     if (correct === null || errors === null || accuracy === null) return null;
     if (typeof d.missed !== 'string' || !/^[A-Z]{0,2000}$/.test(d.missed)) return null;
+    let letters: { letters?: string } = {};
+    if (body.letters !== undefined) {
+      if (typeof body.letters !== 'string' || !/^[A-Z]{2,25}$/.test(body.letters)) return null;
+      letters = { letters: body.letters };
+    }
     return {
       game: 'letras',
       speed: body.speed as Speed,
       ...wpm,
       duration: body.duration as number,
       hint: body.hint,
+      ...letters,
       data: { correct, errors, accuracy, missed: d.missed },
     };
   }

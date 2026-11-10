@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadSettings, unitMs } from './settings';
+import { cleanLetterSet, loadSettings, unitMs } from './settings';
 import { parseResultInput, speedBand } from './shared/results';
 
 const KEY = 'morse-game-settings-v2';
@@ -52,5 +52,29 @@ describe('velocidade da Escuta', () => {
     expect(parseResultInput({ ...base, wpm: 12 })).toMatchObject({ wpm: 12 });
     expect(parseResultInput({ ...base, wpm: 3 })).toBeNull();
     expect(parseResultInput({ ...base, wpm: 12.5 })).toBeNull();
+  });
+});
+
+describe('letras escolhidas no letra a letra', () => {
+  it('limpa o conjunto: ordem alfabética, sem repetir, só A–Z', () => {
+    expect(cleanLetterSet('SEIES')).toBe('EIS');
+    expect(cleanLetterSet('x1Ka')).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ'); // menos de 2 letras válidas
+    expect(cleanLetterSet('E')).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    expect(cleanLetterSet(42)).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+  });
+
+  it('o padrão e configurações antigas usam o alfabeto todo', () => {
+    localStorage.setItem(KEY, JSON.stringify({ letrasHint: true }));
+    expect(loadSettings().letrasSet).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    localStorage.setItem(KEY, JSON.stringify({ letrasSet: 'TME' }));
+    expect(loadSettings().letrasSet).toBe('EMT');
+  });
+
+  it('valida as letras salvas numa rodada', () => {
+    const base = { game: 'letras', speed: 'normal', duration: 60, hint: false, data: { correct: 1, errors: 0, accuracy: 100, missed: '' } };
+    expect(parseResultInput(base)).not.toHaveProperty('letters');
+    expect(parseResultInput({ ...base, letters: 'EIS' })).toMatchObject({ letters: 'EIS' });
+    expect(parseResultInput({ ...base, letters: 'E' })).toBeNull();
+    expect(parseResultInput({ ...base, letters: 'eis' })).toBeNull();
   });
 });

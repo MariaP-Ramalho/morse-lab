@@ -1,4 +1,4 @@
-import { parseResultInput, type ResultInput, type SaveResponse, type StoredResult } from '../shared/results';
+import { parseResultInput, sameLetters, type ResultInput, type SaveResponse, type StoredResult } from '../shared/results';
 
 /**
  * Histórico de partidas guardado no próprio navegador (localStorage).
@@ -45,7 +45,12 @@ export function saveResult(input: ResultInput): SaveResponse & { stored: boolean
 
   if (input.game === 'letras') {
     const same = all.filter(
-      (r) => r.game === 'letras' && r.speed === input.speed && r.duration === input.duration && r.hint === input.hint,
+      (r) =>
+        r.game === 'letras' &&
+        r.speed === input.speed &&
+        r.duration === input.duration &&
+        r.hint === input.hint &&
+        sameLetters(r, input),
     );
     const best = same.length ? Math.max(...same.map((r) => (r.game === 'letras' ? r.data.correct : 0))) : null;
     out.previousBest = best;
