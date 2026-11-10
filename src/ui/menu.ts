@@ -90,7 +90,7 @@ export function mountMenu(container: HTMLElement, opts: MenuOptions): () => void
           <span class="step">02</span>
           <div><h2>Modo</h2><p>Jogos para treinar e ferramentas para usar.</p></div>
         </div>
-        <div class="mode-grid">${GAMES.map(modeCard).join('')}</div>
+        <div class="mode-grid">${GAMES.filter((g) => !g.hidden).map(modeCard).join('')}</div>
       </section>
 
       <section class="block">

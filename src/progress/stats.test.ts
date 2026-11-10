@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Control, EscutaResult, TypingResult } from '../shared/results';
+import type { Control, EscutaResult, LetrasResult, TypingResult } from '../shared/results';
 import {
   attemptsDistribution,
   bySpeed,
   escutaSummary,
+  filterLetras,
   filterTyping,
+  letrasSummary,
+  missedRanking,
   recordsGrid,
   runningBest,
   typingSummary,
@@ -74,5 +77,34 @@ describe('escuta', () => {
     const s = bySpeed([e(true, 3, 'fast'), e(false, 6, 'fast'), e(true, 2, 'slow')]);
     expect(s.find((x) => x.speed === 'fast')?.summary.winRate).toBe(50);
     expect(s.find((x) => x.speed === 'normal')?.summary.played).toBe(0);
+  });
+});
+
+describe('letra a letra', () => {
+  const r = (correct: number, missed: string, extra: Partial<LetrasResult> = {}): LetrasResult => ({
+    id: 1,
+    createdAt: 1,
+    game: 'letras',
+    speed: 'normal',
+    duration: 60,
+    hint: false,
+    data: { correct, errors: missed.length, accuracy: 50, missed },
+    ...extra,
+  });
+
+  it('ordena as letras mais erradas', () => {
+    expect(missedRanking([r(5, 'QYQ'), r(3, 'YQB')])).toEqual([
+      { letter: 'Q', count: 3 },
+      { letter: 'Y', count: 2 },
+      { letter: 'B', count: 1 },
+    ]);
+  });
+
+  it('filtra por velocidade, duração e dica e resume', () => {
+    const rs = [r(5, ''), r(9, '', { speed: 'fast' }), r(7, '', { hint: true })];
+    expect(filterLetras(rs, { speed: 'normal', duration: 60, hint: 'off' })).toHaveLength(1);
+    const s = letrasSummary(rs);
+    expect(s.best?.data.correct).toBe(9);
+    expect(s.totalCorrect).toBe(21);
   });
 });

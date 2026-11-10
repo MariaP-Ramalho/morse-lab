@@ -1,5 +1,14 @@
 import { loadResults } from '../progress/history';
-import { attemptsDistribution, escutaOnly, filterEscuta, filterTyping, runningBest, typingOnly } from '../progress/stats';
+import {
+  attemptsDistribution,
+  escutaOnly,
+  filterEscuta,
+  filterLetras,
+  filterTyping,
+  letrasOnly,
+  runningBest,
+  typingOnly,
+} from '../progress/stats';
 import type { Control, Speed } from '../shared/results';
 import { columnChart, lineChart } from './charts';
 
@@ -67,4 +76,34 @@ export function escutaRoundChart(
     labelHead: 'tentativa',
     valueHead: 'jogos',
   });
+}
+
+export function letrasRoundChart(
+  slot: HTMLElement,
+  combo: { speed: Speed; duration: number; hint: boolean; name: string },
+): () => void {
+  const chartEl = head(slot, `Sua evolução em ${combo.name}`, 'Letras certas em cada rodada nessa configuração. O último ponto é esta rodada.');
+  const list = filterLetras(letrasOnly(loadResults('letras')), {
+    speed: combo.speed,
+    duration: combo.duration,
+    hint: combo.hint ? 'on' : 'off',
+  });
+  if (list.length < 2) {
+    chartEl.innerHTML = '<p class="chart-empty">Primeira rodada nessa configuração. Jogue de novo para ver sua evolução.</p>';
+    return noop;
+  }
+  const correct = list.map((r) => r.data.correct);
+  const best = runningBest(correct);
+  return lineChart(
+    chartEl,
+    {
+      labels: list.map((r) => fmtDate(r.createdAt)),
+      unit: 'acertos',
+      series: [
+        { name: 'rodada', color: 'var(--viz-1)', values: correct },
+        { name: 'recorde', color: 'var(--viz-2)', values: best, step: true, endLabel: true },
+      ],
+    },
+    `Letras certas em ${list.length} rodadas de ${combo.name}. Esta rodada: ${correct[correct.length - 1]}. Recorde: ${best[best.length - 1]}.`,
+  );
 }

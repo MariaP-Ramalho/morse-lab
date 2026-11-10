@@ -4,6 +4,7 @@ import {
   ESCUTA_SPEEDS,
   type Control,
   type EscutaResult,
+  type LetrasResult,
   type Speed,
   type StoredResult,
   type TypingResult,
@@ -17,6 +18,7 @@ export interface TypingFilter {
 
 export const typingOnly = (rs: StoredResult[]) => rs.filter((r): r is TypingResult => r.game === 'typing');
 export const escutaOnly = (rs: StoredResult[]) => rs.filter((r): r is EscutaResult => r.game === 'escuta');
+export const letrasOnly = (rs: StoredResult[]) => rs.filter((r): r is LetrasResult => r.game === 'letras');
 
 export function filterTyping(rs: TypingResult[], f: TypingFilter): TypingResult[] {
   return rs.filter(
@@ -132,4 +134,51 @@ export function attemptsDistribution(rs: EscutaResult[]): { label: string; value
 
 export function bySpeed(rs: EscutaResult[]): { speed: Speed; summary: EscutaSummary }[] {
   return ESCUTA_SPEEDS.map((speed) => ({ speed, summary: escutaSummary(filterEscuta(rs, speed)) }));
+}
+
+// ---------------- escuta: letra a letra ----------------
+
+export interface LetrasFilter {
+  speed: Speed | 'all';
+  duration: number | 'all';
+  hint: 'all' | 'on' | 'off';
+}
+
+export function filterLetras(rs: LetrasResult[], f: LetrasFilter): LetrasResult[] {
+  return rs.filter(
+    (r) =>
+      (f.speed === 'all' || r.speed === f.speed) &&
+      (f.duration === 'all' || r.duration === f.duration) &&
+      (f.hint === 'all' || r.hint === (f.hint === 'on')),
+  );
+}
+
+export interface LetrasSummary {
+  rounds: number;
+  /** Rodada com mais acertos (null sem rodadas). */
+  best: LetrasResult | null;
+  avgAccuracy: number;
+  totalCorrect: number;
+  totalSeconds: number;
+}
+
+export function letrasSummary(rs: LetrasResult[]): LetrasSummary {
+  let best: LetrasResult | null = null;
+  for (const r of rs) if (!best || r.data.correct > best.data.correct) best = r;
+  return {
+    rounds: rs.length,
+    best,
+    avgAccuracy: Math.round(avg(rs.map((r) => r.data.accuracy))),
+    totalCorrect: rs.reduce((a, r) => a + r.data.correct, 0),
+    totalSeconds: rs.reduce((a, r) => a + r.duration, 0),
+  };
+}
+
+/** Letras mais erradas, da que mais aparece para a que menos aparece. */
+export function missedRanking(rs: LetrasResult[]): { letter: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const r of rs) for (const c of r.data.missed) counts.set(c, (counts.get(c) ?? 0) + 1);
+  return [...counts]
+    .map(([letter, count]) => ({ letter, count }))
+    .sort((a, b) => b.count - a.count || a.letter.localeCompare(b.letter));
 }

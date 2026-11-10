@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { EscutaInput, TypingInput } from '../shared/results';
+import type { EscutaInput, LetrasInput, TypingInput } from '../shared/results';
 import { loadResults, saveResult } from './history';
 
 /** localStorage em memória (os testes rodam no Node). */
@@ -65,5 +65,30 @@ describe('histórico no navegador', () => {
       },
     };
     expect(saveResult(typing(40))).toMatchObject({ stored: false, isRecord: true });
+  });
+});
+
+describe('histórico: Escuta letra a letra', () => {
+  const letras = (correct: number, extra: Partial<LetrasInput> = {}): LetrasInput => ({
+    game: 'letras',
+    speed: 'normal',
+    duration: 60,
+    hint: false,
+    data: { correct, errors: 2, accuracy: 80, missed: 'QY' },
+    ...extra,
+  });
+
+  it('detecta recorde de acertos na mesma velocidade, duração e dica', () => {
+    expect(saveResult(letras(10))).toMatchObject({ isRecord: true, previousBest: null });
+    expect(saveResult(letras(8))).toMatchObject({ isRecord: false, previousBest: 10 });
+    expect(saveResult(letras(5, { speed: 'fast' })).isRecord).toBe(true);
+    expect(saveResult(letras(5, { hint: true })).isRecord).toBe(true);
+    expect(saveResult(letras(12))).toMatchObject({ isRecord: true, previousBest: 10 });
+    expect(loadResults('letras')).toHaveLength(5);
+  });
+
+  it('descarta letras erradas inválidas ao ler', () => {
+    localStorage.setItem('morse-results', JSON.stringify([{ ...letras(3), data: { ...letras(3).data, missed: 'q!' }, id: 1, createdAt: 1 }]));
+    expect(loadResults()).toEqual([]);
   });
 });

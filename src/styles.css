@@ -1108,6 +1108,102 @@ a.btn.primary { color: #1d1405; }
 .history .num { text-align: right; }
 .history .mono { font-family: var(--font-mono); letter-spacing: 0.08em; }
 
+/* barra de velocidade do áudio (os dois modos da Escuta) */
+.speed-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.speed-label { color: var(--muted); font-size: 0.85rem; }
+.speed-control input { width: 140px; accent-color: var(--accent); cursor: pointer; }
+.speed-value { min-width: 9.5em; font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+.speed-value b { font-family: var(--font-mono); font-size: 1rem; color: var(--accent); }
+.speed-value small { margin-left: 4px; color: var(--text); font-size: 0.8rem; }
+
+/* ---------------- escuta: letra a letra ---------------- */
+
+.letras.done .stage,
+.letras.done .toolbar { display: none; }
+
+.letras-stage .time-bar { margin-bottom: 28px; }
+.listen { display: flex; align-items: center; justify-content: center; gap: 28px; }
+.listen .play-btn { width: 72px; height: 72px; }
+.listen .play-btn svg { width: 30px; height: 30px; }
+
+.answer-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 180px;
+  min-height: 116px;
+  padding: 12px 24px;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s, background 0.15s;
+}
+.answer-letter { font-family: var(--font-mono); font-size: 3rem; font-weight: 700; line-height: 1; }
+.answer-letter.ghost { color: var(--faint); }
+.answer-letter s { color: var(--err); font-size: 0.6em; text-decoration-thickness: 3px; }
+.answer-code { font-family: var(--font-mono); font-size: 0.9rem; letter-spacing: 0.08em; color: var(--muted); }
+.answer-box.waiting { border-color: var(--accent); }
+.answer-box.ok { border-color: var(--teal); background: var(--teal-soft); animation: pop 0.15s; }
+.answer-box.ok .answer-letter { color: var(--teal); }
+.answer-box.wrong { border-color: var(--err); background: var(--err-soft); animation: shake 0.28s; }
+
+.letras .start-hint { margin-top: 18px; }
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  margin: 20px 0;
+}
+.chip {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  border-radius: 8px;
+  animation: pop 0.15s;
+}
+.chip.ok { color: #052a25; background: var(--teal); }
+.chip.wrong { color: var(--err); background: var(--err-soft); box-shadow: inset 0 0 0 1px var(--err); }
+
+.letras .letters { grid-template-columns: repeat(13, minmax(0, 1fr)); }
+.letras .letters.no-hint .key { padding: 10px 2px; }
+.key.wrong { background: var(--err); border-color: var(--err); color: #2a0509; }
+
+/* letras para treinar (resultado e progresso) */
+.missed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 20px; }
+.missed-ranking { margin-top: 0; }
+.missed-label { margin-right: 4px; color: var(--muted); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.missed-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.missed-item b { color: var(--text); letter-spacing: 0; }
+.missed-item small { color: var(--muted); letter-spacing: 0; }
+
 /* ---------------- responsivo ---------------- */
 
 @media (max-width: 860px) {
@@ -1123,6 +1219,9 @@ a.btn.primary { color: #1d1405; }
   .keyer { gap: 16px; padding: 14px 18px; }
   .appbar .pill:not(.progress-chip) { display: none; }
   .typing .toolbar .btn { margin-left: 0; }
+  .letras .letters { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .listen { gap: 16px; }
+  .answer-box { min-width: 140px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

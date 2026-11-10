@@ -6,29 +6,38 @@ import {
   escutaOnly,
   escutaSummary,
   filterEscuta,
+  filterLetras,
   filterTyping,
+  letrasOnly,
+  letrasSummary,
+  missedRanking,
   recordsGrid,
   runningBest,
   typingOnly,
   typingSummary,
+  type LetrasFilter,
   type TypingFilter,
 } from '../progress/stats';
 import {
   CONTROLS,
   ESCUTA_SPEEDS,
+  LETRAS_DURATIONS,
+  SPEED_NAMES,
+  speedLabel,
   TYPING_DURATIONS,
   type Control,
   type EscutaResult,
+  type LetrasResult,
   type Speed,
   type StoredResult,
   type TypingResult,
 } from '../shared/results';
 import { columnChart, lineChart } from './charts';
+import { MORSE, prettyCode } from '../morse/alphabet';
 import { appHeader, CONTROL_ICONS, ICONS } from './components';
 
-type Game = 'typing' | 'escuta';
+type Game = 'typing' | 'escuta' | 'letras';
 
-const SPEED_NAMES: Record<Speed, string> = { slow: 'lenta', normal: 'normal', fast: 'rápida' };
 const HINT_NAMES = { off: 'sem dica', on: 'com dica' } as const;
 
 const fmtDate = (ms: number) =>
@@ -44,20 +53,28 @@ function fmtDuration(totalS: number): string {
 const comboName = (r: TypingResult) =>
   `${CONTROL_LABELS[r.control].name} · ${r.hint ? 'com dica' : 'sem dica'} · ${r.duration}s`;
 
+const letrasCombo = (r: LetrasResult) =>
+  `${SPEED_NAMES[r.speed]} · ${r.hint ? 'com dica' : 'sem dica'} · ${r.duration}s`;
+
 /** Filtros guardados durante a sessão do navegador (voltar à tela mantém a escolha). */
-const state: { game: Game; typing: TypingFilter; speed: Speed | 'all' } = {
+const state: { game: Game; typing: TypingFilter; speed: Speed | 'all'; letras: LetrasFilter } = {
   game: 'typing',
   typing: { control: 'all', hint: 'all', duration: 'all' },
   speed: 'all',
+  letras: { speed: 'all', duration: 'all', hint: 'all' },
 };
 
 /** Abre o Progresso já filtrado na configuração de uma partida (usado pelo "ver progresso" dos jogos). */
 export function focusProgress(
-  f: { game: 'typing'; control: Control; hint: boolean; duration: number } | { game: 'escuta'; speed: Speed },
+  f:
+    | { game: 'typing'; control: Control; hint: boolean; duration: number }
+    | { game: 'escuta'; speed: Speed }
+    | { game: 'letras'; speed: Speed; duration: number; hint: boolean },
 ): void {
   state.game = f.game;
   if (f.game === 'typing') state.typing = { control: f.control, hint: f.hint ? 'on' : 'off', duration: f.duration };
-  else state.speed = f.speed;
+  else if (f.game === 'escuta') state.speed = f.speed;
+  else state.letras = { speed: f.speed, duration: f.duration, hint: f.hint ? 'on' : 'off' };
 }
 
 export function mountProgressScreen(container: HTMLElement): () => void {
@@ -76,13 +93,20 @@ export function mountProgressScreen(container: HTMLElement): () => void {
   container.addEventListener('click', onMenu);
 
   // ---- filtros ----
-  const seg = (name: string, options: [string, string][], current: string) => `
+  const seg = (name: string, options: [string, string][], current: string, key = name) => `
     <div class="seg" role="group" aria-label="${name}">
-      ${options.map(([v, label]) => `<button data-f="${name}" data-v="${v}" class="${v === current ? 'active' : ''}">${label}</button>`).join('')}
+      ${options.map(([v, label]) => `<button data-f="${key}" data-v="${v}" class="${v === current ? 'active' : ''}">${label}</button>`).join('')}
     </div>`;
 
   function filtersHtml() {
-    const games = seg('jogo', [['typing', 'Digitação'], ['escuta', 'Escuta']], state.game);
+    const games = seg('jogo', [['typing', 'Digitação'], ['escuta', 'Escuta · palavra'], ['letras', 'Escuta · letras']], state.game);
+    if (state.game === 'letras') {
+      const l = state.letras;
+      return `${games}
+        ${seg('velocidade', [['all', 'todas'], ...ESCUTA_SPEEDS.map((x) => [x, SPEED_NAMES[x]] as [string, string])], l.speed, 'l-velocidade')}
+        ${seg('dica', [['all', 'todas'], ['off', 'sem dica'], ['on', 'com dica']], l.hint, 'l-dica')}
+        ${seg('tempo', [['all', 'todos'], ...LETRAS_DURATIONS.map((d) => [String(d), `${d}s`] as [string, string])], String(l.duration), 'l-tempo')}`;
+    }
     if (state.game === 'escuta') {
       return `${games}${seg('velocidade', [['all', 'todas'], ...ESCUTA_SPEEDS.map((s) => [s, SPEED_NAMES[s]] as [string, string])], state.speed)}`;
     }
@@ -105,7 +129,8 @@ export function mountProgressScreen(container: HTMLElement): () => void {
       <div class="progress-content"></div>`;
     const content = body.querySelector<HTMLElement>('.progress-content')!;
     if (state.game === 'typing') renderTyping(content);
-    else renderEscuta(content);
+    else if (state.game === 'escuta') renderEscuta(content);
+    else renderLetras(content);
   }
 
   const tile = (label: string, value: string, sub = '') =>
@@ -288,9 +313,95 @@ export function mountProgressScreen(container: HTMLElement): () => void {
         <tbody>${list.slice(-15).reverse().map((r) => `
           <tr>
             <td>${fmtDate(r.createdAt)}</td>
-            <td>${SPEED_NAMES[r.speed]}</td>
+            <td>${speedLabel(r)}</td>
             <td class="mono">${r.data.word}</td>
             <td>${r.data.won ? `acertou em <b>${r.data.attempts}</b>` : '<span class="muted">não acertou</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  // ---- escuta: letra a letra ----
+  function renderLetras(content: HTMLElement) {
+    const all = letrasOnly(results);
+    if (!all.length) {
+      content.innerHTML = emptyHtml('Nenhuma rodada de letra a letra ainda. Jogue uma e volte aqui!') +
+        `<div class="center"><a class="btn primary" href="#escuta-letras">${ICONS.headphones} jogar letra a letra</a></div>`;
+      return;
+    }
+    const list = filterLetras(all, state.letras);
+    const s = letrasSummary(list);
+    const ranking = missedRanking(list);
+    const worst = ranking[0];
+
+    content.innerHTML = `
+      <div class="tiles">
+        ${tile('Recorde', s.best ? `${s.best.data.correct} <span>acertos</span>` : '—', s.best ? `${letrasCombo(s.best)} · ${fmtDay(s.best.createdAt)}` : '')}
+        ${tile('Precisão média', s.rounds ? `${s.avgAccuracy}%` : '—', 'acertos sobre respostas')}
+        ${tile('Rodadas', String(s.rounds), s.rounds ? `${fmtDuration(s.totalSeconds)} · ${s.totalCorrect} letras certas` : '')}
+        ${tile('Mais errada', worst ? `${worst.letter} <span>${prettyCode(MORSE[worst.letter])}</span>` : '—', worst ? `errou ${worst.count} ${worst.count === 1 ? 'vez' : 'vezes'}` : 'nenhum erro ainda')}
+      </div>
+
+      <div class="card chart-card">
+        <div class="card-head">
+          <div><h2>Letras certas por rodada</h2><p>Cada rodada no filtro atual, da mais antiga para a mais recente.</p></div>
+        </div>
+        <div class="chart-slot"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>Letras que você mais erra</h2><p>Quantas vezes cada letra tocou e você respondeu errado.</p></div></div>
+        ${
+          ranking.length
+            ? `<div class="missed missed-ranking">${ranking
+                .slice(0, 12)
+                .map((m) => `<span class="missed-item"><b>${m.letter}</b>${prettyCode(MORSE[m.letter])}<small>×${m.count}</small></span>`)
+                .join('')}</div>`
+            : '<p class="chart-empty">Nenhum erro com esses filtros.</p>'
+        }
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><h2>Últimas rodadas</h2><p>As 15 mais recentes no filtro atual.</p></div></div>
+        <div class="table-scroll">${letrasHistory(list)}</div>
+      </div>`;
+
+    const slot = content.querySelector<HTMLElement>('.chart-slot')!;
+    if (!list.length) {
+      slot.innerHTML = '<p class="chart-empty">Nenhuma rodada com esses filtros.</p>';
+      return;
+    }
+    const correct = list.map((r) => r.data.correct);
+    cleanups.push(
+      lineChart(
+        slot,
+        {
+          labels: list.map((r) => `${fmtDate(r.createdAt)} · ${letrasCombo(r)}`),
+          unit: 'acertos',
+          series: [
+            { name: 'rodada', color: 'var(--viz-1)', values: correct },
+            { name: 'recorde', color: 'var(--viz-2)', values: runningBest(correct), step: true, endLabel: true },
+          ],
+        },
+        `Letras certas em ${list.length} rodadas. Recorde: ${s.best?.data.correct ?? 0}.`,
+      ),
+    );
+  }
+
+  function letrasHistory(list: LetrasResult[]) {
+    if (!list.length) return '<p class="chart-empty">Nenhuma rodada com esses filtros.</p>';
+    return `
+      <table class="history">
+        <thead><tr><th>quando</th><th>velocidade</th><th>dica</th><th>tempo</th><th class="num">acertos</th><th class="num">erros</th><th class="num">precisão</th></tr></thead>
+        <tbody>${list.slice(-15).reverse().map((r) => `
+          <tr>
+            <td>${fmtDate(r.createdAt)}</td>
+            <td>${speedLabel(r)}</td>
+            <td>${r.hint ? HINT_NAMES.on : HINT_NAMES.off}</td>
+            <td>${r.duration}s</td>
+            <td class="num"><b>${r.data.correct}</b></td>
+            <td class="num">${r.data.errors}</td>
+            <td class="num">${r.data.accuracy}%</td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -307,6 +418,9 @@ export function mountProgressScreen(container: HTMLElement): () => void {
     else if (f === 'controle') state.typing.control = v as Control | 'all';
     else if (f === 'dica') state.typing.hint = v as TypingFilter['hint'];
     else if (f === 'tempo') state.typing.duration = v === 'all' ? 'all' : Number(v);
+    else if (f === 'l-velocidade') state.letras.speed = v as Speed | 'all';
+    else if (f === 'l-dica') state.letras.hint = v as LetrasFilter['hint'];
+    else if (f === 'l-tempo') state.letras.duration = v === 'all' ? 'all' : Number(v);
     render();
   };
   container.addEventListener('click', onClick);

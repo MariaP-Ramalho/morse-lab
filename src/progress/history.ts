@@ -43,6 +43,15 @@ export function saveResult(input: ResultInput): SaveResponse & { stored: boolean
     out.isRecord = input.data.lpm > 0 && (best === null || input.data.lpm > best);
   }
 
+  if (input.game === 'letras') {
+    const same = all.filter(
+      (r) => r.game === 'letras' && r.speed === input.speed && r.duration === input.duration && r.hint === input.hint,
+    );
+    const best = same.length ? Math.max(...same.map((r) => (r.game === 'letras' ? r.data.correct : 0))) : null;
+    out.previousBest = best;
+    out.isRecord = input.data.correct > 0 && (best === null || input.data.correct > best);
+  }
+
   const result = { ...input, id: (all[all.length - 1]?.id ?? 0) + 1, createdAt: Date.now() } as StoredResult;
   all.push(result);
 

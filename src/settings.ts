@@ -1,4 +1,5 @@
 import type { ControlMode } from './input/types';
+import { WPM_MAX, WPM_MIN } from './shared/results';
 
 export interface Settings {
   control: ControlMode;
@@ -11,14 +12,19 @@ export interface Settings {
   duration: number;
   /** Tradutor, modo barra de espaço: pausa que fecha uma letra (ms). */
   letterGapMs: number;
-  /** Velocidade da palavra tocada no jogo Escuta. */
-  escutaSpeed: EscutaSpeed;
+  /** Velocidade do áudio da Escuta em palavras por minuto (vale para os dois modos). */
+  escutaWpm: number;
+  /** Escuta, modo letra a letra: duração da rodada (s). */
+  letrasDuration: number;
+  /** Escuta, modo letra a letra: mostrar o código Morse nas teclas. */
+  letrasHint: boolean;
 }
 
-export type EscutaSpeed = 'slow' | 'normal' | 'fast';
+/** Duração de uma unidade Morse (ms) numa velocidade em palavras por minuto. */
+export const unitMs = (wpm: number) => 1200 / wpm;
 
-/** Duração de uma unidade Morse (ms) para cada velocidade. */
-export const SPEED_UNIT_MS: Record<EscutaSpeed, number> = { slow: 160, normal: 110, fast: 75 };
+/** Velocidades das antigas opções lenta / normal / rápida, para quem já tinha escolhido uma. */
+const OLD_SPEED_WPM: Record<string, number> = { slow: 8, normal: 11, fast: 16 };
 
 const KEY = 'morse-game-settings-v2';
 
@@ -29,13 +35,22 @@ export const DEFAULT_SETTINGS: Settings = {
   showHint: false,
   duration: 30,
   letterGapMs: 600,
-  escutaSpeed: 'normal',
+  escutaWpm: 11,
+  letrasDuration: 60,
+  letrasHint: false,
 };
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      const s: Settings = { ...DEFAULT_SETTINGS, ...saved };
+      if (saved.escutaWpm === undefined && saved.escutaSpeed in OLD_SPEED_WPM) s.escutaWpm = OLD_SPEED_WPM[saved.escutaSpeed];
+      delete (s as Partial<Record<'escutaSpeed', unknown>>).escutaSpeed;
+      s.escutaWpm = Math.round(Math.min(WPM_MAX, Math.max(WPM_MIN, Number(s.escutaWpm) || DEFAULT_SETTINGS.escutaWpm)));
+      return s;
+    }
   } catch {
     /* sem storage: usa o padrão */
   }

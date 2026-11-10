@@ -2,19 +2,15 @@ import { saveResult } from '../../progress/history';
 import { Beeper } from '../../audio/beeper';
 import { MORSE, prettyCode } from '../../morse/alphabet';
 import { normalize } from '../../morse/normalize';
-import { SPEED_UNIT_MS, type EscutaSpeed } from '../../settings';
+import { unitMs } from '../../settings';
+import { SPEED_NAMES, speedBand, type Speed } from '../../shared/results';
 import { appHeader, ICONS } from '../../ui/components';
 import { focusProgress } from '../../ui/progressScreen';
 import { escutaRoundChart } from '../../ui/roundCharts';
 import type { GameContext } from '../registry';
 import { EscutaSession, MAX_ATTEMPTS, type TileState } from './session';
+import { escutaModeSeg, onModeClick, speedControlHtml, wireSpeedControl } from './mode';
 import { wordPicker } from './words.pt';
-
-const SPEEDS: [EscutaSpeed, string][] = [
-  ['slow', 'lenta'],
-  ['normal', 'normal'],
-  ['fast', 'rápida'],
-];
 
 const STATE_LABEL: Record<TileState, string> = {
   correct: 'lugar certo',
@@ -40,9 +36,8 @@ export function mountEscutaGame(ctx: GameContext): () => void {
       ${appHeader('Escuta')}
 
       <div class="toolbar">
-        <div class="seg" aria-label="Velocidade">
-          ${SPEEDS.map(([s, label]) => `<button data-speed="${s}">${label}</button>`).join('')}
-        </div>
+        ${escutaModeSeg('palavra')}
+        ${speedControlHtml(settings.escutaWpm)}
         <span class="toolbar-spacer"></span>
         <button class="btn ghost small" data-act="new">${ICONS.restart} nova palavra</button>
       </div>
@@ -101,7 +96,7 @@ export function mountEscutaGame(ctx: GameContext): () => void {
   let chartCleanup: () => void = () => undefined;
   let disposed = false;
   /** Velocidade em que o último jogo terminado foi salvo (o usuário pode trocar na tela final). */
-  let endedSpeed: EscutaSpeed = settings.escutaSpeed;
+  let endedSpeed: Speed = speedBand(settings.escutaWpm);
 
   function blurFocus() {
     (document.activeElement as HTMLElement | null)?.blur();
@@ -119,7 +114,7 @@ export function mountEscutaGame(ctx: GameContext): () => void {
     }
     playBtn.classList.remove('attention');
     const codes = session.answer.split('').map((c) => MORSE[c]);
-    const duration = player.playMorse(codes, SPEED_UNIT_MS[settings.escutaSpeed]);
+    const duration = player.playMorse(codes, unitMs(settings.escutaWpm));
     if (!duration) return;
     playBtn.classList.add('playing');
     playBtn.innerHTML = ICONS.stop;
@@ -157,9 +152,6 @@ export function mountEscutaGame(ctx: GameContext): () => void {
     messageEl.innerHTML = '';
     messageEl.className = 'message';
     $('.len').textContent = String(session.length);
-    container.querySelectorAll<HTMLElement>('[data-speed]').forEach((b) => {
-      b.classList.toggle('active', b.dataset.speed === settings.escutaSpeed);
-    });
     render();
     blurFocus();
     window.setTimeout(() => play(true), 350);
@@ -186,10 +178,11 @@ export function mountEscutaGame(ctx: GameContext): () => void {
     if (session.status !== 'playing') {
       const won = session.status === 'won';
       const finished = session;
-      endedSpeed = settings.escutaSpeed;
+      endedSpeed = speedBand(settings.escutaWpm);
       const saved = saveResult({
         game: 'escuta',
         speed: endedSpeed,
+        wpm: settings.escutaWpm,
         data: { won, attempts: session.rows.length, word: session.answer },
       });
       const st = saved.summary!;
@@ -228,7 +221,7 @@ export function mountEscutaGame(ctx: GameContext): () => void {
     if (save === 'saved') {
       chartCleanup = escutaRoundChart($('.round-chart'), {
         speed: endedSpeed,
-        speedName: SPEEDS.find(([s]) => s === endedSpeed)![1],
+        speedName: SPEED_NAMES[endedSpeed],
         won,
         attempts: session.rows.length,
       });
@@ -311,6 +304,7 @@ export function mountEscutaGame(ctx: GameContext): () => void {
       focusProgress({ game: 'escuta', speed: endedSpeed });
       return; // o link segue para #progresso
     }
+    if (onModeClick(e.target as HTMLElement)) return;
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button');
     if (!btn) return;
     if (btn.dataset.act === 'menu') {
@@ -322,11 +316,6 @@ export function mountEscutaGame(ctx: GameContext): () => void {
     else if (btn.dataset.act === 'enter') submit();
     else if (btn.dataset.act === 'play') togglePlay();
     else if (btn.dataset.act === 'new') newGame();
-    else if (btn.dataset.speed) {
-      ctx.updateSettings({ escutaSpeed: btn.dataset.speed as EscutaSpeed });
-      container.querySelectorAll<HTMLElement>('[data-speed]').forEach((b) => b.classList.toggle('active', b === btn));
-      play();
-    }
     blurFocus();
   };
 
@@ -350,6 +339,13 @@ export function mountEscutaGame(ctx: GameContext): () => void {
       }
     }
   };
+
+  // Mudou a velocidade: toca a palavra de novo para ouvir como ficou.
+  wireSpeedControl(container, (wpm) => {
+    ctx.updateSettings({ escutaWpm: wpm });
+    blurFocus();
+    play();
+  });
 
   container.addEventListener('click', onClick);
   window.addEventListener('keydown', onKey);
